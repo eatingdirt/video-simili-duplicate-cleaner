@@ -11,13 +11,14 @@ jobs:
       - name: Install Dependencies
         run: |
           brew install qt@6 opencv ffmpeg cmake pkg-config
-          # Set Qt6 path for the environment
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> $GITHUB_ENV
 
-      - name: Reset CMakeLists.txt
+      - name: Kill Tests and Fix Paths
         run: |
-          # We are going to force the OpenCV and FFMPEG sections to be clean
-          # This deletes the developer's "libraries" folder reference entirely
+          # 1. Completely remove the tests folder so CMake doesn't try to build it
+          rm -rf QtProject/tests
+          
+          # 2. Force the main CMakeLists to use our clean logic
           cat <<EOF > QtProject/CMakeLists_Mac.cmake
           find_package(OpenCV REQUIRED)
           find_package(PkgConfig REQUIRED)
@@ -30,18 +31,23 @@ jobs:
               "-framework AudioToolbox" "-framework CoreMedia" "-framework VideoToolbox")
           EOF
           
-          # Tell the main CMakeLists to use our clean file instead of the messy one
+          # 3. Add the include and remove the reference to tests in the main file
           echo "include(CMakeLists_Mac.cmake)" >> QtProject/CMakeLists.txt
+          sed -i '' '/add_subdirectory(tests)/d' QtProject/CMakeLists.txt || true
 
       - name: Configure and Build
         run: |
           mkdir build
           cd build
-          cmake ../QtProject -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6) -DCMAKE_BUILD_TYPE=Release
+          # -DBUILD_TESTING=OFF is the standard way to skip tests
+          cmake ../QtProject -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           make -j$(sysctl -n hw.ncpu)
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
+        with:
+          name: Video-Simili-Cleaner-Mac
+          path: build/*.app
         with:
           name: Video-Simili-Cleaner-Mac
           path: build/*.app
