@@ -13,33 +13,37 @@ jobs:
           brew install qt@6 opencv ffmpeg cmake pkg-config
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> $GITHUB_ENV
 
-      - name: Kill Tests and Fix Paths
+      - name: Forensic Path Cleanup
         run: |
-          # 1. Completely remove the tests folder so CMake doesn't try to build it
+          # 1. Delete the actual 'libraries' folder so the compiler CANNOT find the old files
+          rm -rf QtProject/libraries
           rm -rf QtProject/tests
+
+          # 2. Find every .txt and .cmake file and NUKES any line containing "opencv-install" or "ffmpeg-universalized"
+          # This removes the "No rule to make target" errors by deleting the target entirely
+          find QtProject -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -exec sed -i '' '/opencv-install/d' {} +
+          find QtProject -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -exec sed -i '' '/ffmpeg-universalized/d' {} +
           
-          # 2. Force the main CMakeLists to use our clean logic
-          cat <<EOF > QtProject/CMakeLists_Mac.cmake
+          # 3. Now we inject the CLEAN Homebrew-based linking logic at the very end of the main file
+          cat <<EOF >> QtProject/CMakeLists.txt
+
+          # --- FORCED HOMEBREW LINKING ---
           find_package(OpenCV REQUIRED)
           find_package(PkgConfig REQUIRED)
           pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libswscale libavutil libswresample)
           include_directories(\${OpenCV_INCLUDE_DIRS} \${FFMPEG_INCLUDE_DIRS})
           target_link_libraries(video-simili-duplicate-cleaner PRIVATE 
-              \${OpenCV_LIBS} \${FFMPEG_LIBRARIES}
+              \${OpenCV_LIBS} 
+              \${FFMPEG_LIBRARIES}
               bz2 iconv "-framework OpenCL" "-framework Accelerate" 
               "-framework CoreVideo" "-framework Security" 
               "-framework AudioToolbox" "-framework CoreMedia" "-framework VideoToolbox")
           EOF
-          
-          # 3. Add the include and remove the reference to tests in the main file
-          echo "include(CMakeLists_Mac.cmake)" >> QtProject/CMakeLists.txt
-          sed -i '' '/add_subdirectory(tests)/d' QtProject/CMakeLists.txt || true
 
       - name: Configure and Build
         run: |
           mkdir build
           cd build
-          # -DBUILD_TESTING=OFF is the standard way to skip tests
           cmake ../QtProject -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           make -j$(sysctl -n hw.ncpu)
 
