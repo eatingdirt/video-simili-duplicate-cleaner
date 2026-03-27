@@ -11,40 +11,65 @@ jobs:
       - name: Install Dependencies
         run: |
           brew install qt@6 opencv ffmpeg cmake pkg-config
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> $GITHUB_ENV
+          echo "QT_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
 
-      - name: Forensic Path Cleanup
+      - name: Surgical CMake Reset
         run: |
-          # 1. Delete the actual 'libraries' folder so the compiler CANNOT find the old files
+          # 1. Kill the broken folders
           rm -rf QtProject/libraries
           rm -rf QtProject/tests
 
-          # 2. Find every .txt and .cmake file and NUKES any line containing "opencv-install" or "ffmpeg-universalized"
-          # This removes the "No rule to make target" errors by deleting the target entirely
-          find QtProject -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -exec sed -i '' '/opencv-install/d' {} +
-          find QtProject -type f \( -name "CMakeLists.txt" -o -name "*.cmake" \) -exec sed -i '' '/ffmpeg-universalized/d' {} +
-          
-          # 3. Now we inject the CLEAN Homebrew-based linking logic at the very end of the main file
-          cat <<EOF >> QtProject/CMakeLists.txt
+          # 2. Wipe the main CMakeLists.txt and replace it with a clean, universal version
+          cat <<EOF > QtProject/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.16)
+          project(video-simili-duplicate-cleaner VERSION 0.1 LANGUAGES CXX OBJCXX)
 
-          # --- FORCED HOMEBREW LINKING ---
+          set(CMAKE_CXX_STANDARD 17)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Sql Concurrent Multimedia)
           find_package(OpenCV REQUIRED)
           find_package(PkgConfig REQUIRED)
           pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libswscale libavutil libswresample)
-          include_directories(\${OpenCV_INCLUDE_DIRS} \${FFMPEG_INCLUDE_DIRS})
-          target_link_libraries(video-simili-duplicate-cleaner PRIVATE 
-              \${OpenCV_LIBS} 
+
+          # Find all source files
+          file(GLOB_RECURSE SOURCES "app/*.cpp" "app/*.mm" "app/*.h")
+          file(GLOB_RECURSE UI_FILES "app/*.ui")
+          file(GLOB_RECURSE QRCS "app/*.qrc")
+
+          qt_standard_project_setup()
+
+          qt_add_executable(video-simili-duplicate-cleaner MACOSX_BUNDLE
+              \${SOURCES} \${UI_FILES} \${QRCS}
+          )
+
+          target_include_directories(video-simili-duplicate-cleaner PRIVATE 
+              app 
+              \${OpenCV_INCLUDE_DIRS} 
+              \${FFMPEG_INCLUDE_DIRS}
+          )
+
+          target_link_libraries(video-simili-duplicate-cleaner PRIVATE
+              Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Sql Qt6::Concurrent Qt6::Multimedia
+              \${OpenCV_LIBS}
               \${FFMPEG_LIBRARIES}
-              bz2 iconv "-framework OpenCL" "-framework Accelerate" 
-              "-framework CoreVideo" "-framework Security" 
-              "-framework AudioToolbox" "-framework CoreMedia" "-framework VideoToolbox")
+              bz2 iconv
+              "-framework OpenCL" "-framework Accelerate" "-framework CoreVideo"
+              "-framework Security" "-framework AudioToolbox" "-framework CoreMedia"
+              "-framework VideoToolbox"
+          )
+
+          set_target_properties(video-simili-duplicate-cleaner PROPERTIES
+              MACOSX_BUNDLE_GUI_IDENTIFIER "com.theophanemayaud.videosimili"
+              MACOSX_BUNDLE_BUNDLE_NAME "Video Simili Cleaner"
+          )
           EOF
 
       - name: Configure and Build
         run: |
           mkdir build
           cd build
-          cmake ../QtProject -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake ../QtProject -DCMAKE_PREFIX_PATH=\${{ env.QT_DIR }}
           make -j$(sysctl -n hw.ncpu)
 
       - name: Upload Artifact
