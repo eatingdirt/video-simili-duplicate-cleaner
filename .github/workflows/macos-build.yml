@@ -12,7 +12,6 @@ jobs:
         run: |
           brew install qt@6 opencv ffmpeg cmake pkg-config
           echo "QT_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
-          echo "BREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: Surgical CMake Reset
         run: |
@@ -29,9 +28,14 @@ jobs:
           find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Sql Concurrent Multimedia)
           find_package(OpenCV REQUIRED)
           find_package(PkgConfig REQUIRED)
-          pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libswscale libavutil libswresample)
 
-          # Find all source files
+          # Get absolute paths for FFmpeg libraries to stop "library not found"
+          pkg_check_modules(AVCODEC REQUIRED libavcodec)
+          pkg_check_modules(AVFORMAT REQUIRED libavformat)
+          pkg_check_modules(SWSCALE REQUIRED libswscale)
+          pkg_check_modules(AVUTIL REQUIRED libavutil)
+          pkg_check_modules(SWRESAMPLE REQUIRED libswresample)
+
           file(GLOB_RECURSE SOURCES "app/*.cpp" "app/*.mm" "app/*.h")
           file(GLOB_RECURSE UI_FILES "app/*.ui")
           file(GLOB_RECURSE QRCS "app/*.qrc")
@@ -42,10 +46,6 @@ jobs:
               \${SOURCES} \${UI_FILES} \${QRCS}
           )
 
-          # --- LINKER FIX FOR AVFORMAT ---
-          # This tells the linker where Homebrew keeps its .dylib files
-          link_directories(\${{ env.BREW_PREFIX }}/lib)
-
           target_compile_definitions(video-simili-duplicate-cleaner PRIVATE
               APP_NAME="Video-Simili-Cleaner"
               APP_COPYRIGHT="2024"
@@ -55,13 +55,18 @@ jobs:
           target_include_directories(video-simili-duplicate-cleaner PRIVATE 
               app 
               \${OpenCV_INCLUDE_DIRS} 
-              \${FFMPEG_INCLUDE_DIRS}
+              \${AVCODEC_INCLUDE_DIRS}
           )
 
           target_link_libraries(video-simili-duplicate-cleaner PRIVATE
               Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Sql Qt6::Concurrent Qt6::Multimedia
               \${OpenCV_LIBS}
-              \${FFMPEG_LIBRARIES}
+              # Use absolute library paths found by pkg-config
+              \${AVCODEC_LDFLAGS}
+              \${AVFORMAT_LDFLAGS}
+              \${SWSCALE_LDFLAGS}
+              \${AVUTIL_LDFLAGS}
+              \${SWRESAMPLE_LDFLAGS}
               bz2 iconv
               "-framework OpenCL" "-framework Accelerate" "-framework CoreVideo"
               "-framework Security" "-framework AudioToolbox" "-framework CoreMedia"
@@ -71,7 +76,6 @@ jobs:
           set_target_properties(video-simili-duplicate-cleaner PROPERTIES
               MACOSX_BUNDLE_GUI_IDENTIFIER "com.theophanemayaud.videosimili"
               MACOSX_BUNDLE_BUNDLE_NAME "Video Simili Cleaner"
-              OUTPUT_NAME "Video-Simili-Cleaner"
           )
           EOF
 
