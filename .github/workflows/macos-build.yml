@@ -12,14 +12,13 @@ jobs:
         run: |
           brew install qt@6 opencv ffmpeg cmake pkg-config
           echo "QT_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
+          echo "BREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: Surgical CMake Reset
         run: |
-          # 1. Kill the broken folders
           rm -rf QtProject/libraries
           rm -rf QtProject/tests
 
-          # 2. Re-write the CMakeLists.txt with the missing APP_NAME definitions
           cat <<EOF > QtProject/CMakeLists.txt
           cmake_minimum_required(VERSION 3.16)
           project(video-simili-duplicate-cleaner VERSION 0.1 LANGUAGES CXX OBJCXX)
@@ -43,7 +42,10 @@ jobs:
               \${SOURCES} \${UI_FILES} \${QRCS}
           )
 
-          # --- FIX FOR "UNDECLARED IDENTIFIER APP_NAME" ---
+          # --- LINKER FIX FOR AVFORMAT ---
+          # This tells the linker where Homebrew keeps its .dylib files
+          link_directories(\${{ env.BREW_PREFIX }}/lib)
+
           target_compile_definitions(video-simili-duplicate-cleaner PRIVATE
               APP_NAME="Video-Simili-Cleaner"
               APP_COPYRIGHT="2024"
@@ -69,6 +71,7 @@ jobs:
           set_target_properties(video-simili-duplicate-cleaner PROPERTIES
               MACOSX_BUNDLE_GUI_IDENTIFIER "com.theophanemayaud.videosimili"
               MACOSX_BUNDLE_BUNDLE_NAME "Video Simili Cleaner"
+              OUTPUT_NAME "Video-Simili-Cleaner"
           )
           EOF
 
