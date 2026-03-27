@@ -19,7 +19,7 @@ jobs:
           rm -rf QtProject/libraries
           rm -rf QtProject/tests
 
-          # 2. Wipe the main CMakeLists.txt and replace it with a clean, universal version
+          # 2. Re-write the CMakeLists.txt with the missing APP_NAME definitions
           cat <<EOF > QtProject/CMakeLists.txt
           cmake_minimum_required(VERSION 3.16)
           project(video-simili-duplicate-cleaner VERSION 0.1 LANGUAGES CXX OBJCXX)
@@ -41,6 +41,13 @@ jobs:
 
           qt_add_executable(video-simili-duplicate-cleaner MACOSX_BUNDLE
               \${SOURCES} \${UI_FILES} \${QRCS}
+          )
+
+          # --- FIX FOR "UNDECLARED IDENTIFIER APP_NAME" ---
+          target_compile_definitions(video-simili-duplicate-cleaner PRIVATE
+              APP_NAME="Video-Simili-Cleaner"
+              APP_COPYRIGHT="2024"
+              QT_DISABLE_DEPRECATED_BEFORE=0x060000
           )
 
           target_include_directories(video-simili-duplicate-cleaner PRIVATE 
@@ -69,7 +76,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake ../QtProject -DCMAKE_PREFIX_PATH=\${{ env.QT_DIR }}
+          cmake ../QtProject -DCMAKE_PREFIX_PATH=\${{ env.QT_DIR }} -DCMAKE_BUILD_TYPE=Release
           make -j$(sysctl -n hw.ncpu)
 
       - name: Upload Artifact
